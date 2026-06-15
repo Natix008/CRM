@@ -271,31 +271,71 @@ router.post('/', auth, async (req, res) => {
       await page.screenshot({ path: reportScreenshot, fullPage: true });
       console.log('Report screenshot:', reportScreenshot);
 
-      // ── Step 5: Extract scores ────────────────────────────────────────────
+      // ── Step 5: Capture debug info ────────────────────────────────────────
+      const debugInfo = await page.evaluate(() => {
+        const bodyText = document.body.innerText || '';
+        const bodyHtml = document.body.innerHTML || '';
+        return {
+          url: window.location.href,
+          title: document.title,
+          textLength: bodyText.length,
+          textSample: bodyText.slice(0, 8000),
+          htmlSample: bodyHtml.slice(0, 8000),
+          allClasses: Array.from(document.querySelectorAll('[class]'))
+            .map(el => el.className).filter(Boolean).slice(0, 100),
+          iframes: Array.from(document.querySelectorAll('iframe')).map(f => f.src),
+        };
+      });
+      console.log('Report page URL:', debugInfo.url);
+      console.log('Report page title:', debugInfo.title);
+      console.log('Report page text length:', debugInfo.textLength);
+      console.log('Report page text (first 2000):', debugInfo.textSample.slice(0, 2000));
+
+      // ── Step 6: Extract scores ────────────────────────────────────────────
       const scores = await page.evaluate(() => {
         const bureaus = ['Equifax', 'Experian', 'TransUnion'];
         const results = [];
         const bodyText = document.body.innerText;
+
+        // Also try scanning the full HTML for scores near bureau names
+        const bodyHtml = document.body.innerHTML;
+
         bureaus.forEach(bureau => {
-          const idx = bodyText.indexOf(bureau);
-          if (idx === -1) return;
-          const window = bodyText.substring(Math.max(0, idx - 150), idx + 400);
-          const match = window.match(/\b([3-8]\d{2})\b/);
-          if (match) results.push({ bureau, score: parseInt(match[1]) });
+          // Try innerText first
+          let idx = bodyText.indexOf(bureau);
+          if (idx !== -1) {
+            const window = bodyText.substring(Math.max(0, idx - 200), idx + 500);
+            const match = window.match(/\b([3-8]\d{2})\b/);
+            if (match) { results.push({ bureau, score: parseInt(match[1]) }); return; }
+          }
+          // Try case-insensitive in HTML
+          const re = new RegExp(bureau, 'i');
+          const htmlIdx = bodyHtml.search(re);
+          if (htmlIdx !== -1) {
+            const snippet = bodyHtml.substring(Math.max(0, htmlIdx - 200), htmlIdx + 600)
+              .replace(/<[^>]+>/g, ' ');
+            const match = snippet.match(/\b([3-8]\d{2})\b/);
+            if (match) results.push({ bureau, score: parseInt(match[1]) });
+          }
         });
         return results;
       });
 
-      // ── Step 6: Extract tradelines ────────────────────────────────────────
+      // ── Step 7: Extract tradelines ────────────────────────────────────────
       const accounts = await page.evaluate(() => {
         const NEG = ['collection', 'charge', 'late', 'past due', 'delinquent', 'repo', 'foreclos', 'bankrupt'];
         const found = [];
 
-        const rows = Array.from(document.querySelectorAll('tr, [class*="tradeline"], [class*="account-row"], [class*="trade-line"]'));
+        // Broader selector set
+        const rows = Array.from(document.querySelectorAll(
+          'tr, [class*="tradeline"], [class*="account-row"], [class*="trade-line"], ' +
+          '[class*="account_row"], [class*="AccountRow"], [class*="TradeRow"], ' +
+          '[class*="credit-item"], [class*="creditItem"]'
+        ));
         rows.forEach(row => {
           const text = (row.innerText || '').trim();
           if (text.length < 10 || text.length > 2000) return;
-          const cells = Array.from(row.querySelectorAll('td, [class*="cell"]'));
+          const cells = Array.from(row.querySelectorAll('td, th, [class*="cell"], [class*="col"], [class*="Col"]'));
           if (cells.length < 2) return;
           const creditor = cells[0]?.innerText?.trim();
           if (!creditor || creditor.length < 2) return;
@@ -332,6 +372,15 @@ router.post('/', auth, async (req, res) => {
         scores,
         accounts: processedAccounts,
         negativeCount: processedAccounts.filter(a => a.isNegative).length,
+        debug: {
+          reportUrl: debugInfo.url,
+          pageTitle: debugInfo.title,
+          textLength: debugInfo.textLength,
+          textSample: debugInfo.textSample,
+          htmlSample: debugInfo.htmlSample,
+          classes: debugInfo.allClasses,
+          iframes: debugInfo.iframes,
+        },
       });
 
     } catch (err) {
