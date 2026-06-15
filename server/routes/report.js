@@ -201,15 +201,42 @@ router.post('/', auth, async (req, res) => {
       }
 
       // ── Step 4: Navigate to Credit Report page ───────────────────────────
-      const REPORT_URL = 'https://member.myscoreiq.com/CreditReport.aspx';
-      console.log('Navigating to report:', REPORT_URL);
-      await page.goto(REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await new Promise(r => setTimeout(r, 6000));
+      // Try report URLs in order; use whichever has the most content
+      const reportUrls = [
+        'https://member.myscoreiq.com/CreditReport.aspx',
+        'https://member.myscoreiq.com/ScoreAnalysis.aspx',
+        'https://member.myscoreiq.com/get-fico-score.aspx',
+        'https://member.myscoreiq.com/Dashboard.aspx',
+      ];
 
-      const reportPageUrl = page.url();
-      console.log('Report page URL:', reportPageUrl);
+      let bestPageText = '';
+      let reportPageUrl = page.url();
 
-      // If redirected back to login, session didn't stick
+      for (const url of reportUrls) {
+        try {
+          console.log('Trying report URL:', url);
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+          await new Promise(r => setTimeout(r, 5000));
+          const curUrl = page.url();
+          if (/Login\.aspx/i.test(curUrl)) continue; // bounced to login
+          const text = await page.evaluate(() => document.body.innerText || '');
+          console.log(`  → ${curUrl} | text length: ${text.length}`);
+          if (text.length > bestPageText.length) {
+            bestPageText = text;
+            reportPageUrl = curUrl;
+          }
+          // If we found bureau names, this is likely the right page — stop here
+          if (/equifax|experian|transunion/i.test(text) && text.length > 500) {
+            console.log('Found bureau data at:', curUrl);
+            break;
+          }
+        } catch (e) {
+          console.log('Report URL failed:', url, e.message);
+        }
+      }
+
+      console.log('Best report page:', reportPageUrl, '| text length:', bestPageText.length);
+
       if (/Login\.aspx/i.test(reportPageUrl)) {
         await browser.close();
         return res.status(401).json({ message: 'Session expired after login — credentials may be incorrect.' });

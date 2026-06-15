@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshCw, AlertTriangle, CheckCircle, Plus, X, Eye, EyeOff, Loader } from 'lucide-react';
+import { RefreshCw, AlertTriangle, CheckCircle, Plus, X, Eye, EyeOff, Loader, ExternalLink, Calendar } from 'lucide-react';
 import { api } from '../lib/api';
 import { useStore } from '../store/useStore';
 import type { Client, FetchedReport, ReportAccount, Bureau } from '../types';
@@ -19,13 +19,14 @@ const negativeStatusMap: Record<string, string> = {
 };
 
 export default function ReportFetcher({ client }: Props) {
-  const { addAccount, addDispute } = useStore();
+  const { addAccount, addDispute, refresh } = useStore();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [report, setReport] = useState<FetchedReport | null>(null);
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [showCreds, setShowCreds] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [scoresSaved, setScoresSaved] = useState(false);
 
   const hasCredentials = !!(client.myScoreIQUsername && client.myScoreIQPassword);
 
@@ -33,9 +34,28 @@ export default function ReportFetcher({ client }: Props) {
     setLoading(true);
     setError('');
     setReport(null);
+    setScoresSaved(false);
     try {
       const result = await api.fetchReport(client.id);
       setReport(result);
+
+      // Auto-save fetched scores to the client's credit profile
+      if (result.scores && result.scores.length > 0) {
+        const date = new Date().toISOString().split('T')[0];
+        await Promise.all(
+          result.scores.map((s: { bureau: string; score: number }) =>
+            api.addScore(client.id, {
+              id: `sc${Date.now()}-${s.bureau}`,
+              clientId: client.id,
+              bureau: s.bureau,
+              score: s.score,
+              date,
+            })
+          )
+        );
+        await refresh();
+        setScoresSaved(true);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch report');
     } finally {
@@ -45,9 +65,8 @@ export default function ReportFetcher({ client }: Props) {
 
   const handleAddAccount = async (account: ReportAccount) => {
     const key = `${account.creditor}-${account.accountNumber}`;
-    const accountId = `a${Date.now()}`;
     await addAccount(client.id, {
-      id: accountId,
+      id: `a${Date.now()}`,
       clientId: client.id,
       creditor: account.creditor,
       accountNumber: account.accountNumber,
@@ -95,8 +114,9 @@ export default function ReportFetcher({ client }: Props) {
           <div>
             <div className="text-sm font-semibold text-gray-800">MyScoreIQ Report</div>
             {report && (
-              <div className="text-xs text-gray-400">
-                Fetched {new Date(report.fetchedAt).toLocaleString()}
+              <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-0.5">
+                <Calendar size={11} />
+                Report date: {new Date(report.fetchedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
               </div>
             )}
           </div>
@@ -110,6 +130,14 @@ export default function ReportFetcher({ client }: Props) {
               {showCreds ? 'Hide credentials' : 'View credentials'}
             </button>
           )}
+          <a
+            href="https://member.myscoreiq.com/CreditReport.aspx"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-blue-600 hover:underline px-2 py-1"
+          >
+            <ExternalLink size={12} /> View on MyScoreIQ
+          </a>
           <button
             onClick={handleFetch}
             disabled={loading || !hasCredentials}
@@ -159,17 +187,26 @@ export default function ReportFetcher({ client }: Props) {
         <div className="px-5 py-8 text-center">
           <Loader size={24} className="animate-spin text-blue-500 mx-auto mb-2" />
           <div className="text-sm text-gray-500">Logging into MyScoreIQ and extracting report...</div>
-          <div className="text-xs text-gray-400 mt-1">This may take 20–40 seconds</div>
+          <div className="text-xs text-gray-400 mt-1">This may take 30–60 seconds</div>
         </div>
       )}
 
       {/* Report Results */}
       {report && !loading && (
         <div className="p-5 space-y-5">
-          {/* Credit Scores */}
+
+          {/* Scores saved notice */}
+          {scoresSaved && (
+            <div className="flex items-center gap-2 py-2.5 px-4 bg-green-50 border border-green-100 rounded-lg text-sm text-green-700">
+              <CheckCircle size={15} />
+              Credit scores saved to client profile — visible in the Credit Scores section above.
+            </div>
+          )}
+
+          {/* Credit Scores from report */}
           {report.scores.length > 0 && (
             <div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Credit Scores from Report</div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Scores from This Report</div>
               <div className="grid grid-cols-3 gap-3">
                 {report.scores.map(s => {
                   const color = s.score >= 670 ? 'text-green-600' : s.score >= 580 ? 'text-yellow-600' : 'text-red-600';
@@ -215,7 +252,6 @@ export default function ReportFetcher({ client }: Props) {
                             Balance: <span className="font-semibold text-red-600">${account.balance.toLocaleString()}</span>
                             {' · '}Status: {account.status}
                           </div>
-                          {/* Per-bureau dispute buttons */}
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
                             {account.bureaus.map(bureau => {
                               const dKey = `dispute-${account.creditor}-${bureau}`;
@@ -244,9 +280,7 @@ export default function ReportFetcher({ client }: Props) {
                           onClick={() => handleAddAccount(account)}
                           disabled={isAdded}
                           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium flex-shrink-0 transition-colors ${
-                            isAdded
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                            isAdded ? 'bg-green-100 text-green-700' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
                           }`}
                         >
                           {isAdded ? <CheckCircle size={12} /> : <Plus size={12} />}
@@ -267,7 +301,7 @@ export default function ReportFetcher({ client }: Props) {
             </div>
           )}
 
-          {/* Positive Accounts summary */}
+          {/* Positive Accounts */}
           {positives.length > 0 && (
             <div>
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
