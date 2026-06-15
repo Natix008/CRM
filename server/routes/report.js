@@ -27,73 +27,6 @@ function detectNegativeReason(text = '') {
   return 'Negative Item';
 }
 
-// Try to find and fill an input across the page and any iframes
-async function fillInput(page, selectors, value) {
-  // Try main page first
-  for (const sel of selectors) {
-    try {
-      const el = await page.$(sel);
-      if (el) {
-        await el.click({ clickCount: 3 });
-        await page.keyboard.type(value, { delay: 40 });
-        console.log(`Filled with selector: ${sel}`);
-        return { success: true, context: 'main' };
-      }
-    } catch { /* try next */ }
-  }
-
-  // Try inside iframes
-  for (const frame of page.frames()) {
-    if (frame === page.mainFrame()) continue;
-    for (const sel of selectors) {
-      try {
-        const el = await frame.$(sel);
-        if (el) {
-          await el.click({ clickCount: 3 });
-          await frame.type(sel, value, { delay: 40 });
-          console.log(`Filled in iframe with selector: ${sel}`);
-          return { success: true, context: 'iframe' };
-        }
-      } catch { /* try next */ }
-    }
-  }
-
-  return { success: false };
-}
-
-async function clickSubmit(page) {
-  const submitSelectors = [
-    'button[type="submit"]',
-    'input[type="submit"]',
-    'button[id*="login" i]',
-    'button[id*="submit" i]',
-    'button[id*="sign" i]',
-    'a[id*="login" i]',
-    '[class*="login-btn"]',
-    '[class*="btn-login"]',
-    '[class*="btn-primary"]',
-    'button',
-  ];
-
-  for (const sel of submitSelectors) {
-    try {
-      const btn = await page.$(sel);
-      if (btn) {
-        const text = await btn.evaluate(el => el.textContent?.toLowerCase() || '');
-        if (text.includes('login') || text.includes('sign in') || text.includes('submit') || text.includes('continue') || sel === 'button[type="submit"]' || sel === 'input[type="submit"]') {
-          console.log(`Clicking submit: ${sel} ("${text.trim().slice(0, 30)}")`);
-          await btn.click();
-          return true;
-        }
-      }
-    } catch { /* try next */ }
-  }
-
-  // Last resort: Enter key
-  await page.keyboard.press('Enter');
-  return true;
-}
-
 // POST /api/clients/:clientId/fetch-report
 router.post('/', auth, async (req, res) => {
   try {
@@ -132,110 +65,133 @@ router.post('/', auth, async (req, res) => {
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       await page.setViewport({ width: 1280, height: 900 });
 
-      // Allow all requests
-      await page.setRequestInterception(false);
+      // ── Step 1: Load login page ──────────────────────────────────────────
+      const LOGIN_URL = 'https://member.myscoreiq.com/Login.aspx';
+      console.log('Loading login page:', LOGIN_URL);
+      await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await new Promise(r => setTimeout(r, 2000));
 
-      // ── Step 1: Try login URLs ───────────────────────────────────────────
-      const loginUrls = [
-        'https://www.myscoreiq.com/login',
-        'https://www.myscoreiq.com/login.aspx',
-        'https://www.myscoreiq.com/member/login',
-        'https://secure.myscoreiq.com/login',
-        'https://www.myscoreiq.com/sign-in',
-      ];
+      const loginPageUrl = page.url();
+      console.log('Login page loaded at:', loginPageUrl);
 
-      let loginLoaded = false;
-      for (const url of loginUrls) {
-        try {
-          console.log('Trying login URL:', url);
-          const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-          if (response && response.status() < 400) {
-            await new Promise(r => setTimeout(r, 3000));
-            loginLoaded = true;
-            console.log('Login page loaded:', page.url());
-            break;
-          }
-        } catch (e) {
-          console.log('URL failed:', url, e.message);
-        }
-      }
-
-      if (!loginLoaded) {
-        await browser.close();
-        return res.status(400).json({ message: 'Could not load MyScoreIQ login page. Check your internet connection.' });
-      }
-
-      // Screenshot for debugging
-      const screenshotPath = path.join(screenshotDir, `login-${Date.now()}.png`);
-      await page.screenshot({ path: screenshotPath, fullPage: true });
-      console.log('Screenshot saved:', screenshotPath);
-
-      // Log all inputs found
-      const allInputs = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('input')).map(i => ({
-          type: i.type, name: i.name, id: i.id,
-          placeholder: i.placeholder, autocomplete: i.autocomplete,
-        }))
-      );
-      console.log('Inputs on page:', JSON.stringify(allInputs, null, 2));
-
-      // Log iframes
-      const frameUrls = page.frames().map(f => f.url());
-      console.log('Frames:', frameUrls);
-
-      // ── Step 2: Fill credentials ─────────────────────────────────────────
+      // ── Step 2: Fill credentials using known ASP.NET field IDs ───────────
+      // Primary selectors from actual page HTML
       const userSelectors = [
+        '#Navbar1_txtUsername',
+        'input[name="Navbar1$txtUsername"]',
+        '#txtUsername',
+        'input[name="txtUsername"]',
         'input[type="email"]',
         'input[name="email"]',
         'input[name="Email"]',
         'input[name="username"]',
         'input[name="UserName"]',
-        'input[name="user_name"]',
-        'input[id="email"]',
-        'input[id="username"]',
-        'input[id="Email"]',
-        'input[id="UserName"]',
-        'input[autocomplete="email"]',
-        'input[autocomplete="username"]',
         'input[placeholder*="email" i]',
         'input[placeholder*="user" i]',
-        'input[type="text"]',  // broadest fallback
+        'input[type="text"]',
       ];
 
-      const userResult = await fillInput(page, userSelectors, client.myscoreiq_username);
-      if (!userResult.success) {
-        const screenshot64 = fs.readFileSync(screenshotPath).toString('base64');
-        await browser.close();
-        return res.status(400).json({
-          message: 'Could not find the email/username input on the MyScoreIQ login page. The page structure may have changed.',
-          debug: { inputs: allInputs, frames: frameUrls, screenshot: screenshot64 },
-        });
+      const passSelectors = [
+        '#Navbar1_txtPassword',
+        'input[name="Navbar1$txtPassword"]',
+        '#txtPassword',
+        'input[name="txtPassword"]',
+        'input[type="password"]',
+      ];
+
+      let userFilled = false;
+      for (const sel of userSelectors) {
+        try {
+          const el = await page.$(sel);
+          if (el) {
+            const visible = await el.evaluate(n => {
+              const s = window.getComputedStyle(n);
+              return s.display !== 'none' && s.visibility !== 'hidden' && n.offsetParent !== null;
+            });
+            if (!visible) continue;
+            await el.click({ clickCount: 3 });
+            await page.keyboard.type(client.myscoreiq_username, { delay: 40 });
+            console.log('Filled username with:', sel);
+            userFilled = true;
+            break;
+          }
+        } catch { /* try next */ }
       }
 
-      await new Promise(r => setTimeout(r, 500));
-
-      const passResult = await fillInput(page, ['input[type="password"]'], client.myscoreiq_password);
-      if (!passResult.success) {
+      if (!userFilled) {
         await browser.close();
-        return res.status(400).json({ message: 'Could not find password field on MyScoreIQ login page.' });
+        return res.status(400).json({ message: 'Could not find the username field on the MyScoreIQ login page.' });
       }
 
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 400));
 
-      // ── Step 3: Submit ───────────────────────────────────────────────────
-      await Promise.allSettled([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 25000 }),
-        clickSubmit(page),
-      ]);
+      let passFilled = false;
+      for (const sel of passSelectors) {
+        try {
+          const el = await page.$(sel);
+          if (el) {
+            const visible = await el.evaluate(n => {
+              const s = window.getComputedStyle(n);
+              return s.display !== 'none' && s.visibility !== 'hidden' && n.offsetParent !== null;
+            });
+            if (!visible) continue;
+            await el.click({ clickCount: 3 });
+            await page.keyboard.type(client.myscoreiq_password, { delay: 40 });
+            console.log('Filled password with:', sel);
+            passFilled = true;
+            break;
+          }
+        } catch { /* try next */ }
+      }
+
+      if (!passFilled) {
+        await browser.close();
+        return res.status(400).json({ message: 'Could not find the password field on the MyScoreIQ login page.' });
+      }
+
+      await new Promise(r => setTimeout(r, 400));
+
+      // ── Step 3: Submit login ─────────────────────────────────────────────
+      const submitSelectors = [
+        '#Navbar1_btnLogin',
+        'input[name="Navbar1$btnLogin"]',
+        '#btnLogin',
+        'input[type="submit"]',
+        'button[type="submit"]',
+        'a.button[href*="Login" i]',
+        'a.button',
+      ];
+
+      let submitted = false;
+      for (const sel of submitSelectors) {
+        try {
+          const el = await page.$(sel);
+          if (el) {
+            await Promise.allSettled([
+              page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 25000 }),
+              el.click(),
+            ]);
+            submitted = true;
+            console.log('Submitted with:', sel);
+            break;
+          }
+        } catch { /* try next */ }
+      }
+
+      if (!submitted) {
+        await page.keyboard.press('Enter');
+        await new Promise(r => setTimeout(r, 5000));
+      }
+
       await new Promise(r => setTimeout(r, 3000));
 
       const postLoginUrl = page.url();
       console.log('Post-login URL:', postLoginUrl);
 
       // Still on login? Bad credentials.
-      if (/login|signin|sign-in/i.test(postLoginUrl)) {
+      if (/login/i.test(postLoginUrl)) {
         const bodyText = await page.evaluate(() => document.body.innerText);
-        const errMatch = bodyText.match(/(invalid|incorrect|wrong|failed|error)[^\n.]{0,100}/i);
+        const errMatch = bodyText.match(/(invalid|incorrect|wrong|failed|error|password)[^\n.]{0,100}/i);
         await browser.close();
         return res.status(401).json({
           message: errMatch
@@ -244,75 +200,45 @@ router.post('/', auth, async (req, res) => {
         });
       }
 
-      // ── Step 4: Navigate to credit report ────────────────────────────────
-      const reportUrls = [
-        'https://www.myscoreiq.com/get-fico-score.aspx',
-        'https://www.myscoreiq.com/credit-report.aspx',
-        'https://www.myscoreiq.com/score-analysis.aspx',
-        'https://www.myscoreiq.com/report',
-        'https://www.myscoreiq.com/member/report',
-        'https://www.myscoreiq.com/member/dashboard',
-        'https://www.myscoreiq.com/dashboard',
-      ];
+      // ── Step 4: Navigate to Credit Report page ───────────────────────────
+      const REPORT_URL = 'https://member.myscoreiq.com/CreditReport.aspx';
+      console.log('Navigating to report:', REPORT_URL);
+      await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 40000 });
+      await new Promise(r => setTimeout(r, 4000));
 
-      for (const url of reportUrls) {
-        try {
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-          await new Promise(r => setTimeout(r, 3000));
-          const len = await page.evaluate(() => document.body.innerText.length);
-          if (len > 300 && !/login|signin/i.test(page.url())) {
-            console.log('Report page found:', url, 'content length:', len);
-            break;
-          }
-        } catch { /* try next */ }
+      const reportPageUrl = page.url();
+      console.log('Report page URL:', reportPageUrl);
+
+      // If redirected to login, session didn't stick
+      if (/login/i.test(reportPageUrl)) {
+        await browser.close();
+        return res.status(401).json({ message: 'Session expired after login — credentials may be incorrect.' });
       }
 
-      const reportScreenshot = path.join(screenshotDir, `report-${Date.now()}.png`);
-      await page.screenshot({ path: reportScreenshot, fullPage: true });
-      console.log('Report screenshot:', reportScreenshot);
+      const screenshotPath = path.join(screenshotDir, `report-${Date.now()}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log('Report screenshot saved:', screenshotPath);
 
-      // ── Step 5: Capture debug info ────────────────────────────────────────
-      const debugInfo = await page.evaluate(() => {
-        const bodyText = document.body.innerText || '';
-        const bodyHtml = document.body.innerHTML || '';
-        return {
-          url: window.location.href,
-          title: document.title,
-          textLength: bodyText.length,
-          textSample: bodyText.slice(0, 8000),
-          htmlSample: bodyHtml.slice(0, 8000),
-          allClasses: Array.from(document.querySelectorAll('[class]'))
-            .map(el => el.className).filter(Boolean).slice(0, 100),
-          iframes: Array.from(document.querySelectorAll('iframe')).map(f => f.src),
-        };
-      });
-      console.log('Report page URL:', debugInfo.url);
-      console.log('Report page title:', debugInfo.title);
-      console.log('Report page text length:', debugInfo.textLength);
-      console.log('Report page text (first 2000):', debugInfo.textSample.slice(0, 2000));
-
-      // ── Step 6: Extract scores ────────────────────────────────────────────
+      // ── Step 5: Extract credit scores ────────────────────────────────────
       const scores = await page.evaluate(() => {
         const bureaus = ['Equifax', 'Experian', 'TransUnion'];
         const results = [];
-        const bodyText = document.body.innerText;
-
-        // Also try scanning the full HTML for scores near bureau names
-        const bodyHtml = document.body.innerHTML;
+        const bodyText = document.body.innerText || '';
+        const bodyHtml = document.body.innerHTML || '';
 
         bureaus.forEach(bureau => {
-          // Try innerText first
+          // Search in visible text
           let idx = bodyText.indexOf(bureau);
           if (idx !== -1) {
-            const window = bodyText.substring(Math.max(0, idx - 200), idx + 500);
-            const match = window.match(/\b([3-8]\d{2})\b/);
+            const slice = bodyText.substring(Math.max(0, idx - 300), idx + 600);
+            const match = slice.match(/\b([3-8]\d{2})\b/);
             if (match) { results.push({ bureau, score: parseInt(match[1]) }); return; }
           }
-          // Try case-insensitive in HTML
+          // Search in HTML (strips tags)
           const re = new RegExp(bureau, 'i');
           const htmlIdx = bodyHtml.search(re);
           if (htmlIdx !== -1) {
-            const snippet = bodyHtml.substring(Math.max(0, htmlIdx - 200), htmlIdx + 600)
+            const snippet = bodyHtml.substring(Math.max(0, htmlIdx - 300), htmlIdx + 800)
               .replace(/<[^>]+>/g, ' ');
             const match = snippet.match(/\b([3-8]\d{2})\b/);
             if (match) results.push({ bureau, score: parseInt(match[1]) });
@@ -321,20 +247,22 @@ router.post('/', auth, async (req, res) => {
         return results;
       });
 
-      // ── Step 7: Extract tradelines ────────────────────────────────────────
+      console.log('Scores found:', scores);
+
+      // ── Step 6: Extract tradeline accounts ───────────────────────────────
       const accounts = await page.evaluate(() => {
         const NEG = ['collection', 'charge', 'late', 'past due', 'delinquent', 'repo', 'foreclos', 'bankrupt'];
         const found = [];
 
-        // Broader selector set
         const rows = Array.from(document.querySelectorAll(
           'tr, [class*="tradeline"], [class*="account-row"], [class*="trade-line"], ' +
           '[class*="account_row"], [class*="AccountRow"], [class*="TradeRow"], ' +
-          '[class*="credit-item"], [class*="creditItem"]'
+          '[class*="credit-item"], [class*="creditItem"], [class*="account-item"]'
         ));
+
         rows.forEach(row => {
           const text = (row.innerText || '').trim();
-          if (text.length < 10 || text.length > 2000) return;
+          if (text.length < 10 || text.length > 3000) return;
           const cells = Array.from(row.querySelectorAll('td, th, [class*="cell"], [class*="col"], [class*="Col"]'));
           if (cells.length < 2) return;
           const creditor = cells[0]?.innerText?.trim();
@@ -343,12 +271,15 @@ router.post('/', auth, async (req, res) => {
           const balance = balMatch ? parseInt(balMatch[0].replace(/[$,]/g, '')) : 0;
           const acctMatch = text.match(/\b\d{4,}\b/);
           const accountNumber = acctMatch ? `****${acctMatch[0].slice(-4)}` : '****0000';
-          const status = cells.find(c => NEG.some(k => c.innerText?.toLowerCase().includes(k)))?.innerText?.trim() || cells[cells.length - 1]?.innerText?.trim() || '';
+          const statusCell = cells.find(c => NEG.some(k => c.innerText?.toLowerCase().includes(k)));
+          const status = statusCell?.innerText?.trim() || cells[cells.length - 1]?.innerText?.trim() || '';
           const isNeg = NEG.some(k => text.toLowerCase().includes(k));
           found.push({ creditor, status, balance, accountNumber, isNeg });
         });
         return found;
       });
+
+      console.log('Accounts found:', accounts.length);
 
       await browser.close();
 
@@ -366,6 +297,9 @@ router.post('/', auth, async (req, res) => {
         };
       });
 
+      // Include debug text sample to help tune parsing if needed
+      const pageText = await page.evaluate(() => document.body.innerText).catch(() => '');
+
       res.json({
         clientId: client.id,
         fetchedAt: new Date().toISOString(),
@@ -373,13 +307,8 @@ router.post('/', auth, async (req, res) => {
         accounts: processedAccounts,
         negativeCount: processedAccounts.filter(a => a.isNegative).length,
         debug: {
-          reportUrl: debugInfo.url,
-          pageTitle: debugInfo.title,
-          textLength: debugInfo.textLength,
-          textSample: debugInfo.textSample,
-          htmlSample: debugInfo.htmlSample,
-          classes: debugInfo.allClasses,
-          iframes: debugInfo.iframes,
+          reportUrl: reportPageUrl,
+          textSample: pageText.slice(0, 5000),
         },
       });
 
