@@ -51,6 +51,9 @@ export const api = {
   fetchReport: (clientId: string) =>
     request(`/clients/${clientId}/fetch-report`, { method: 'POST' }),
 
+  getReportDownloadUrl: (clientId: string) =>
+    `http://localhost:3001/api/clients/${clientId}/fetch-report/download`,
+
   getTasks: () => request('/tasks'),
   addTask: (task: object) => request('/tasks', { method: 'POST', body: JSON.stringify(task) }),
   updateTask: (id: string, task: object) => request(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(task) }),

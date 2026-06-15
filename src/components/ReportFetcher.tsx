@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshCw, AlertTriangle, CheckCircle, Plus, X, Eye, EyeOff, Loader, ExternalLink, Calendar } from 'lucide-react';
+import { RefreshCw, AlertTriangle, CheckCircle, Plus, X, Eye, EyeOff, Loader, ExternalLink, Calendar, Download } from 'lucide-react';
 import { api } from '../lib/api';
 import { useStore } from '../store/useStore';
 import type { Client, FetchedReport, ReportAccount, Bureau } from '../types';
@@ -129,6 +129,16 @@ export default function ReportFetcher({ client }: Props) {
             >
               {showCreds ? 'Hide credentials' : 'View credentials'}
             </button>
+          )}
+          {report && (
+            <a
+              href={api.getReportDownloadUrl(client.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-indigo-600 hover:underline px-2 py-1 border border-indigo-200 rounded-lg hover:bg-indigo-50"
+            >
+              <Download size={12} /> Download Report
+            </a>
           )}
           <a
             href="https://member.myscoreiq.com/CreditReport.aspx"
