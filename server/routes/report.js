@@ -189,7 +189,7 @@ router.post('/', auth, async (req, res) => {
       console.log('Post-login URL:', postLoginUrl);
 
       // Still on login? Bad credentials.
-      if (/login/i.test(postLoginUrl)) {
+      if (/Login\.aspx/i.test(postLoginUrl)) {
         const bodyText = await page.evaluate(() => document.body.innerText);
         const errMatch = bodyText.match(/(invalid|incorrect|wrong|failed|error|password)[^\n.]{0,100}/i);
         await browser.close();
@@ -203,14 +203,14 @@ router.post('/', auth, async (req, res) => {
       // ── Step 4: Navigate to Credit Report page ───────────────────────────
       const REPORT_URL = 'https://member.myscoreiq.com/CreditReport.aspx';
       console.log('Navigating to report:', REPORT_URL);
-      await page.goto(REPORT_URL, { waitUntil: 'networkidle2', timeout: 40000 });
-      await new Promise(r => setTimeout(r, 4000));
+      await page.goto(REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await new Promise(r => setTimeout(r, 6000));
 
       const reportPageUrl = page.url();
       console.log('Report page URL:', reportPageUrl);
 
-      // If redirected to login, session didn't stick
-      if (/login/i.test(reportPageUrl)) {
+      // If redirected back to login, session didn't stick
+      if (/Login\.aspx/i.test(reportPageUrl)) {
         await browser.close();
         return res.status(401).json({ message: 'Session expired after login — credentials may be incorrect.' });
       }
