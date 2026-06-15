@@ -22,8 +22,8 @@ export default function Sidebar() {
           <TrendingUp size={20} className="text-white" />
         </div>
         <div>
-          <div className="font-bold text-sm leading-tight">CreditPro CRM</div>
-          <div className="text-xs text-slate-400">Credit Repair Suite</div>
+          <div className="font-bold text-sm leading-tight">Five Star Mastery</div>
+          {/* <div className="text-xs text-slate-400">Credit Repair Suite</div> */}
         </div>
       </div>
 
