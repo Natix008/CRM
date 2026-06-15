@@ -132,7 +132,7 @@ router.post('/', auth, async (req, res) => {
         const set = await page.evaluate((username) => {
           const inputs = Array.from(document.querySelectorAll('input[type="text"], input[type="email"], input:not([type="password"]):not([type="hidden"]):not([type="submit"]):not([type="checkbox"])'));
           for (const inp of inputs) {
-            const el = inp as HTMLInputElement;
+            const el = /** @type {HTMLInputElement} */ (inp);
             el.value = username;
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -173,7 +173,7 @@ router.post('/', auth, async (req, res) => {
 
       if (!passFilled) {
         const set = await page.evaluate((password) => {
-          const inp = document.querySelector('input[type="password"]') as HTMLInputElement;
+          const inp = /** @type {HTMLInputElement} */ (document.querySelector('input[type="password"]'));
           if (!inp) return false;
           inp.value = password;
           inp.dispatchEvent(new Event('input', { bubbles: true }));
