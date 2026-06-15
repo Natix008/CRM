@@ -48,6 +48,9 @@ export const api = {
   addScore: (clientId: string, score: object) =>
     request(`/clients/${clientId}/scores`, { method: 'POST', body: JSON.stringify(score) }),
 
+  fetchReport: (clientId: string) =>
+    request(`/clients/${clientId}/fetch-report`, { method: 'POST' }),
+
   getTasks: () => request('/tasks'),
   addTask: (task: object) => request('/tasks', { method: 'POST', body: JSON.stringify(task) }),
   updateTask: (id: string, task: object) => request(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(task) }),

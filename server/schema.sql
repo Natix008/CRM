@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS clients (
   status ENUM('Active','Inactive','Completed') DEFAULT 'Active',
   monthly_fee DECIMAL(10,2) DEFAULT 99,
   referral_source VARCHAR(100),
+  myscoreiq_username VARCHAR(150),
+  myscoreiq_password VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -108,3 +110,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   FOREIGN KEY (user_id) REFERENCES users(id),
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
 );
+
+-- Migration: run these if upgrading an existing database
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS myscoreiq_username VARCHAR(150);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS myscoreiq_password VARCHAR(255);
