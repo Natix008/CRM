@@ -1,8 +1,9 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, AlertCircle, FileText,
-  CreditCard, CheckSquare, Settings, TrendingUp, ChevronRight
+  CreditCard, CheckSquare, Settings, TrendingUp, ChevronRight, LogOut
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const nav = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -14,6 +15,18 @@ const nav = [
 ];
 
 export default function Sidebar() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const initials = user
+    ? user.name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()
+    : 'U';
+
   return (
     <div className="flex flex-col h-full bg-slate-900 text-white w-64 flex-shrink-0">
       {/* Logo */}
@@ -53,7 +66,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Settings */}
+      {/* Settings + User */}
       <div className="px-3 py-4 border-t border-slate-700">
         <NavLink
           to="/settings"
@@ -66,14 +79,22 @@ export default function Sidebar() {
           <Settings size={18} />
           <span>Settings</span>
         </NavLink>
-        <div className="mt-4 px-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-xs font-bold">AS</div>
-            <div>
-              <div className="text-xs font-medium">Agent Smith</div>
-              <div className="text-xs text-slate-500">Admin</div>
-            </div>
+
+        <div className="mt-3 px-2 flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-xs font-bold flex-shrink-0">
+            {initials}
           </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium truncate">{user?.name ?? 'User'}</div>
+            <div className="text-xs text-slate-500 truncate">{user?.role ?? ''}</div>
+          </div>
+          <button
+            onClick={handleLogout}
+            title="Logout"
+            className="p-1.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+          >
+            <LogOut size={15} />
+          </button>
         </div>
       </div>
     </div>
