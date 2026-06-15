@@ -7,6 +7,7 @@ import {
   Plus, CheckCircle, AlertCircle, Clock, CreditCard, FileText, StickyNote
 } from 'lucide-react';
 import type { Bureau, DisputeStatus } from '../types';
+import ReportFetcher from '../components/ReportFetcher';
 
 const bureauColors: Record<Bureau, string> = {
   Equifax: 'bg-red-100 text-red-700 border-red-200',
@@ -178,6 +179,9 @@ export default function ClientDetail() {
               ))}
             </div>
           </div>
+
+          {/* MyScoreIQ Report Fetcher */}
+          <ReportFetcher client={client} />
         </div>
       )}
 

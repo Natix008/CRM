@@ -29,6 +29,8 @@ async function buildClient(row, pool) {
     status: row.status,
     monthlyFee: parseFloat(row.monthly_fee),
     referralSource: row.referral_source,
+    myScoreIQUsername: row.myscoreiq_username || undefined,
+    myScoreIQPassword: row.myscoreiq_password || undefined,
     creditScores: scores[0].map(s => ({ bureau: s.bureau, score: s.score, date: s.date })),
     accounts: accounts[0].map(a => ({
       id: a.id,
@@ -103,14 +105,17 @@ router.get('/', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     const { id, firstName, lastName, email, phone, address, city, state, zip,
-      dateOfBirth, ssnLast4, enrollmentDate, status, monthlyFee, referralSource } = req.body;
+      dateOfBirth, ssnLast4, enrollmentDate, status, monthlyFee, referralSource,
+      myScoreIQUsername, myScoreIQPassword } = req.body;
     const clientId = id || `c${Date.now()}`;
     await db.query(
       `INSERT INTO clients (id, user_id, first_name, last_name, email, phone, address, city, state, zip,
-        date_of_birth, ssn_last4, enrollment_date, status, monthly_fee, referral_source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        date_of_birth, ssn_last4, enrollment_date, status, monthly_fee, referral_source,
+        myscoreiq_username, myscoreiq_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [clientId, req.user.id, firstName, lastName, email, phone, address, city, state, zip,
-        dateOfBirth || null, ssnLast4, enrollmentDate, status || 'Active', monthlyFee || 99, referralSource || null]
+        dateOfBirth || null, ssnLast4, enrollmentDate, status || 'Active', monthlyFee || 99,
+        referralSource || null, myScoreIQUsername || null, myScoreIQPassword || null]
     );
     const [rows] = await db.query('SELECT * FROM clients WHERE id = ?', [clientId]);
     const client = await buildClient(rows[0], db);
@@ -123,13 +128,16 @@ router.post('/', auth, async (req, res) => {
 router.put('/:id', auth, async (req, res) => {
   try {
     const { firstName, lastName, email, phone, address, city, state, zip,
-      dateOfBirth, ssnLast4, status, monthlyFee, referralSource } = req.body;
+      dateOfBirth, ssnLast4, status, monthlyFee, referralSource,
+      myScoreIQUsername, myScoreIQPassword } = req.body;
     await db.query(
       `UPDATE clients SET first_name=?, last_name=?, email=?, phone=?, address=?, city=?, state=?, zip=?,
-        date_of_birth=?, ssn_last4=?, status=?, monthly_fee=?, referral_source=?
+        date_of_birth=?, ssn_last4=?, status=?, monthly_fee=?, referral_source=?,
+        myscoreiq_username=?, myscoreiq_password=?
        WHERE id=? AND user_id=?`,
       [firstName, lastName, email, phone, address, city, state, zip,
         dateOfBirth || null, ssnLast4, status, monthlyFee, referralSource || null,
+        myScoreIQUsername || null, myScoreIQPassword || null,
         req.params.id, req.user.id]
     );
     res.json({ ok: true });

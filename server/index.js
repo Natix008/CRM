@@ -14,6 +14,7 @@ app.use('/api/clients/:clientId/disputes', require('./routes/disputes'));
 app.use('/api/clients/:clientId/letters', require('./routes/letters'));
 app.use('/api/clients/:clientId/notes', require('./routes/notes'));
 app.use('/api/clients/:clientId/scores', require('./routes/creditscores'));
+app.use('/api/clients/:clientId/fetch-report', require('./routes/report'));
 app.use('/api/accounts', require('./routes/accounts'));
 app.use('/api/disputes', require('./routes/disputes'));
 app.use('/api/tasks', require('./routes/tasks'));

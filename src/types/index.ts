@@ -111,4 +111,26 @@ export interface Client {
   tasks: Task[];
   referralSource?: string;
   monthlyFee: number;
+  myScoreIQUsername?: string;
+  myScoreIQPassword?: string;
+}
+
+export interface ReportAccount {
+  creditor: string;
+  accountNumber: string;
+  accountType: string;
+  balance: number;
+  status: string;
+  bureaus: Bureau[];
+  dateOpened?: string;
+  isNegative: boolean;
+  negativeReason?: string;
+}
+
+export interface FetchedReport {
+  clientId: string;
+  fetchedAt: string;
+  scores: { bureau: Bureau; score: number }[];
+  accounts: ReportAccount[];
+  negativeCount: number;
 }
