@@ -4,9 +4,10 @@ import { useStore } from '../store/useStore';
 import { format } from 'date-fns';
 import {
   ArrowLeft, Phone, Mail, MapPin, TrendingUp, TrendingDown,
-  Plus, CheckCircle, AlertCircle, Clock, CreditCard, FileText, StickyNote
+  Plus, CheckCircle, AlertCircle, Clock, CreditCard, FileText, StickyNote,
+  Pencil, X, Eye, EyeOff
 } from 'lucide-react';
-import type { Bureau, DisputeStatus } from '../types';
+import type { Bureau, DisputeStatus, Client } from '../types';
 import ReportFetcher from '../components/ReportFetcher';
 
 const bureauColors: Record<Bureau, string> = {
@@ -37,11 +38,197 @@ const accountStatusColors: Record<string, string> = {
 
 type Tab = 'overview' | 'accounts' | 'disputes' | 'letters' | 'notes';
 
+const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+
+function EditClientModal({ client, onClose }: { client: Client; onClose: () => void }) {
+  const { updateClient } = useStore();
+  const [saving, setSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [form, setForm] = useState({
+    firstName: client.firstName,
+    lastName: client.lastName,
+    email: client.email,
+    phone: client.phone,
+    address: client.address,
+    city: client.city,
+    state: client.state,
+    zip: client.zip,
+    dateOfBirth: client.dateOfBirth,
+    ssnLast4: client.ssnLast4,
+    monthlyFee: String(client.monthlyFee),
+    referralSource: client.referralSource || '',
+    status: client.status,
+    myScoreIQUsername: client.myScoreIQUsername || '',
+    myScoreIQPassword: client.myScoreIQPassword || '',
+  });
+
+  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    await updateClient({
+      ...client,
+      ...form,
+      monthlyFee: Number(form.monthlyFee),
+      status: form.status as Client['status'],
+      myScoreIQUsername: form.myScoreIQUsername || undefined,
+      myScoreIQPassword: form.myScoreIQPassword || undefined,
+    });
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900">Edit Client</h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
+
+          {/* Status */}
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Status</label>
+            <div className="flex gap-2">
+              {(['Active', 'Inactive', 'Completed'] as const).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => set('status', s)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    form.status === s
+                      ? s === 'Active' ? 'bg-green-500 text-white border-green-500'
+                        : s === 'Completed' ? 'bg-blue-500 text-white border-blue-500'
+                        : 'bg-gray-500 text-white border-gray-500'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Name */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">First Name *</label>
+              <input required value={form.firstName} onChange={e => set('firstName', e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Last Name *</label>
+              <input required value={form.lastName} onChange={e => set('lastName', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Email *</label>
+            <input required type="email" value={form.email} onChange={e => set('email', e.target.value)} className={inputCls} />
+          </div>
+
+          {/* Phone + SSN */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Phone *</label>
+              <input required value={form.phone} onChange={e => set('phone', e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">SSN (Last 4)</label>
+              <input maxLength={4} value={form.ssnLast4} onChange={e => set('ssnLast4', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+
+          {/* DOB */}
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Date of Birth</label>
+            <input type="date" value={form.dateOfBirth} onChange={e => set('dateOfBirth', e.target.value)} className={inputCls} />
+          </div>
+
+          {/* Address */}
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Address</label>
+            <input value={form.address} onChange={e => set('address', e.target.value)} className={inputCls} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-1">
+              <label className="text-xs font-medium text-gray-600 block mb-1">City</label>
+              <input value={form.city} onChange={e => set('city', e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">State</label>
+              <input maxLength={2} value={form.state} onChange={e => set('state', e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">ZIP</label>
+              <input value={form.zip} onChange={e => set('zip', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+
+          {/* Fee + Referral */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Monthly Fee ($)</label>
+              <input type="number" value={form.monthlyFee} onChange={e => set('monthlyFee', e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">Referral Source</label>
+              <input value={form.referralSource} onChange={e => set('referralSource', e.target.value)} className={inputCls} />
+            </div>
+          </div>
+
+          {/* MyScoreIQ */}
+          <div className="border-t border-gray-100 pt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-5 h-5 rounded bg-blue-600 flex items-center justify-center">
+                <span className="text-white text-xs font-bold">M</span>
+              </div>
+              <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">MyScoreIQ Login</span>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Username / Email</label>
+                <input type="email" value={form.myScoreIQUsername} onChange={e => set('myScoreIQUsername', e.target.value)} placeholder="client@email.com" className={inputCls} autoComplete="off" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={form.myScoreIQPassword}
+                    onChange={e => set('myScoreIQPassword', e.target.value)}
+                    placeholder="••••••••"
+                    className={`${inputCls} pr-10`}
+                    autoComplete="new-password"
+                  />
+                  <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={saving} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60">
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function ClientDetail() {
   const { id } = useParams<{ id: string }>();
   const { clients, addNote } = useStore();
   const [tab, setTab] = useState<Tab>('overview');
   const [newNote, setNewNote] = useState('');
+  const [showEdit, setShowEdit] = useState(false);
 
   const client = clients.find(c => c.id === id);
   if (!client) return <div className="p-8 text-gray-500">Client not found.</div>;
@@ -98,13 +285,21 @@ export default function ClientDetail() {
               <span className="flex items-center gap-1"><MapPin size={13} />{client.city}, {client.state}</span>
             </div>
           </div>
-          <div className="text-right">
+          <div className="text-right flex flex-col items-end gap-2">
+            <button
+              onClick={() => setShowEdit(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <Pencil size={13} /> Edit Client
+            </button>
             <div className="text-xs text-gray-500">Monthly Fee</div>
             <div className="text-lg font-bold text-gray-900">${client.monthlyFee}/mo</div>
             <div className="text-xs text-gray-400">Since {format(new Date(client.enrollmentDate), 'MMM d, yyyy')}</div>
           </div>
         </div>
       </div>
+
+      {showEdit && <EditClientModal client={client} onClose={() => setShowEdit(false)} />}
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-gray-200 mb-6">
