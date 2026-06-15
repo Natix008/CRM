@@ -99,28 +99,56 @@ router.post('/', auth, async (req, res) => {
         'input[type="password"]',
       ];
 
+      // Log what inputs exist for debugging
+      const allInputs = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('input')).map(i => ({
+          type: i.type, name: i.name, id: i.id,
+          placeholder: i.placeholder, className: i.className,
+          visible: window.getComputedStyle(i).display !== 'none',
+        }))
+      );
+      console.log('Login page inputs:', JSON.stringify(allInputs));
+
       let userFilled = false;
       for (const sel of userSelectors) {
         try {
           const el = await page.$(sel);
           if (el) {
-            const visible = await el.evaluate(n => {
-              const s = window.getComputedStyle(n);
-              return s.display !== 'none' && s.visibility !== 'hidden' && n.offsetParent !== null;
-            });
-            if (!visible) continue;
+            await el.evaluate(n => { n.removeAttribute('readonly'); n.removeAttribute('disabled'); });
             await el.click({ clickCount: 3 });
             await page.keyboard.type(client.myscoreiq_username, { delay: 40 });
-            console.log('Filled username with:', sel);
-            userFilled = true;
-            break;
+            const val = await el.evaluate(n => n.value);
+            if (val) {
+              console.log('Filled username with:', sel, '→ value length:', val.length);
+              userFilled = true;
+              break;
+            }
           }
         } catch { /* try next */ }
       }
 
       if (!userFilled) {
+        // Last resort: use page.evaluate to set value directly
+        const set = await page.evaluate((username) => {
+          const inputs = Array.from(document.querySelectorAll('input[type="text"], input[type="email"], input:not([type="password"]):not([type="hidden"]):not([type="submit"]):not([type="checkbox"])'));
+          for (const inp of inputs) {
+            const el = inp as HTMLInputElement;
+            el.value = username;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
+          return false;
+        }, client.myscoreiq_username);
+        if (set) {
+          console.log('Filled username via evaluate fallback');
+          userFilled = true;
+        }
+      }
+
+      if (!userFilled) {
         await browser.close();
-        return res.status(400).json({ message: 'Could not find the username field on the MyScoreIQ login page.' });
+        return res.status(400).json({ message: 'Could not find the username field on the MyScoreIQ login page.', debug: { inputs: allInputs, url: page.url() } });
       }
 
       await new Promise(r => setTimeout(r, 400));
@@ -130,18 +158,29 @@ router.post('/', auth, async (req, res) => {
         try {
           const el = await page.$(sel);
           if (el) {
-            const visible = await el.evaluate(n => {
-              const s = window.getComputedStyle(n);
-              return s.display !== 'none' && s.visibility !== 'hidden' && n.offsetParent !== null;
-            });
-            if (!visible) continue;
+            await el.evaluate(n => { n.removeAttribute('readonly'); n.removeAttribute('disabled'); });
             await el.click({ clickCount: 3 });
             await page.keyboard.type(client.myscoreiq_password, { delay: 40 });
-            console.log('Filled password with:', sel);
-            passFilled = true;
-            break;
+            const val = await el.evaluate(n => n.value);
+            if (val) {
+              console.log('Filled password with:', sel);
+              passFilled = true;
+              break;
+            }
           }
         } catch { /* try next */ }
+      }
+
+      if (!passFilled) {
+        const set = await page.evaluate((password) => {
+          const inp = document.querySelector('input[type="password"]') as HTMLInputElement;
+          if (!inp) return false;
+          inp.value = password;
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }, client.myscoreiq_password);
+        if (set) { passFilled = true; console.log('Filled password via evaluate fallback'); }
       }
 
       if (!passFilled) {
