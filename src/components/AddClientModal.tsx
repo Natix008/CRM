@@ -167,6 +167,16 @@ export default function AddClientModal({ onClose }: Props) {
                   </button>
                 </div>
               </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">SSN Last 4</label>
+                <input
+                  maxLength={4}
+                  value={form.ssnLast4}
+                  onChange={e => set('ssnLast4', e.target.value)}
+                  placeholder="0000"
+                  className={inputCls}
+                />
+              </div>
             </div>
           </div>
 
